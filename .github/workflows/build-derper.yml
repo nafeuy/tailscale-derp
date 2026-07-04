@@ -1,0 +1,182 @@
+name: Build Tailscale Derper
+
+on:
+  schedule:
+    # 每天 UTC 凌晨 4:00
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tailscale version tag (e.g. v1.92.4). Leave empty to auto-detect latest.'
+        required: false
+        type: string
+
+env:
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 1. 确定要构建的 Tailscale 版本
+      # ------------------------------------------------------------------
+      - name: Resolve Tailscale version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            TAG="${{ github.event.inputs.version }}"
+          else
+            TAG="$(gh api repos/tailscale/tailscale/releases/latest --jq .tag_name)"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Target version: ${TAG}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # ------------------------------------------------------------------
+      # 2. 检查 Docker Hub 是否已有完整的多架构镜像
+      # ------------------------------------------------------------------
+      - name: Check if image already exists
+        id: check
+        run: |
+          IMAGE="docker.io/${{ github.repository }}:${{ steps.version.outputs.tag }}"
+          INSPECT_JSON=$(docker manifest inspect "$IMAGE" 2>/dev/null || true)
+          if [ -n "$INSPECT_JSON" ] && INSPECT_JSON="$INSPECT_JSON" python - <<'PY'
+          import json
+          import os
+          import sys
+
+          raw = os.environ.get("INSPECT_JSON", "")
+          try:
+              data = json.loads(raw)
+          except Exception:
+              sys.exit(1)
+
+          plats = set()
+          for m in data.get("manifests", []):
+              p = m.get("platform", {})
+              arch = p.get("architecture")
+              osname = p.get("os")
+              if arch and osname:
+                  plats.add(f"{osname}/{arch}")
+
+          need = {"linux/amd64", "linux/arm64"}
+          sys.exit(0 if need.issubset(plats) else 1)
+          PY
+          then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Version ${{ steps.version.outputs.tag }} multi-arch image already exists, skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "🆕 Version ${{ steps.version.outputs.tag }} not found, starting build…"
+          fi
+
+      # ------------------------------------------------------------------
+      # 3. 登录 Docker Hub
+      # ------------------------------------------------------------------
+      - name: Login to Docker Hub
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ------------------------------------------------------------------
+      # 4. 登录 ghcr.io
+      # ------------------------------------------------------------------
+      - name: Login to ghcr.io
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ------------------------------------------------------------------
+      # 5. 配置多架构构建环境
+      # ------------------------------------------------------------------
+      - name: Set up QEMU
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      # ------------------------------------------------------------------
+      # 6. 构建多架构镜像并推送到两个仓库
+      # ------------------------------------------------------------------
+      - name: Build and push Docker image
+        id: build_push
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ steps.version.outputs.tag }}
+          push: true
+          tags: |
+            ${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.tag }}
+            ${{ env.GHCR_IMAGE }}:latest
+            ${{ github.repository }}:${{ steps.version.outputs.tag }}
+            ${{ github.repository }}:latest
+
+      # ------------------------------------------------------------------
+      # 7. 更新 README 中的版本和时间信息
+      # ------------------------------------------------------------------
+      - name: Update README status
+        if: always()
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import re
+
+          readme = Path("README.md")
+          if not readme.exists():
+              exit(0)
+
+          text = readme.read_text(encoding="utf-8")
+
+          version = "${{ steps.version.outputs.tag }}"
+          image_exists = "${{ steps.check.outputs.exists }}"
+          build_outcome = "${{ steps.build_push.outcome }}"
+          stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+          # 只在真正推送了新镜像时才更新"上次更新时间"
+          last_field_match = re.search(r"- 上次更新时间（UTC）：`([^`]*)`", text)
+          last_update = last_field_match.group(1) if last_field_match else stamp
+          if image_exists == "false" and build_outcome == "success":
+              last_update = stamp
+
+          text = re.sub(r"- 最新同步版本：`[^`]*`", f"- 最新同步版本：`{version}`", text)
+          text = re.sub(r"- 上次更新时间（UTC）：`[^`]*`", f"- 上次更新时间（UTC）：`{last_update}`", text)
+          text = re.sub(r"- 上次检查时间（UTC）：`[^`]*`", f"- 上次检查时间（UTC）：`{stamp}`", text)
+
+          readme.write_text(text, encoding="utf-8")
+          print("README status updated")
+          PY
+
+      # ------------------------------------------------------------------
+      # 8. 提交 README 变更
+      # ------------------------------------------------------------------
+      - name: Commit README
+        if: always()
+        run: |
+          if git diff --quiet README.md; then
+            echo "README unchanged, skipping commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs: sync to tailscale ${{ steps.version.outputs.tag }}"
+          git push
