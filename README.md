@@ -28,6 +28,6 @@ docker run --rm nafeuy/tailscale-derp:latest ./derper --help
 
 ## 版本状态
 
-- 最新同步版本：`v0.0.0`
-- 上次更新时间（UTC）：`—`
-- 上次检查时间（UTC）：`—`
+- 最新同步版本：`v1.98.8`
+- 上次更新时间（UTC）：`2026-07-04 14:34 UTC`
+- 上次检查时间（UTC）：`2026-07-04 14:34 UTC`
