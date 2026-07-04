@@ -27,25 +27,7 @@
 docker run --rm nafeuy/tailscale-derp:latest ./derper --help
 ```
 
-`docker run` 启动命令：
-
-```bash
-docker run -d \
-  --name tailscale-derp \
-  --restart unless-stopped \
-  -p 29518:29518 \
-  -p 3478:3478/udp \
-  -v /var/run/tailscale:/var/run/tailscale:ro \
-  nafeuy/tailscale-derp:latest \
-  ./derper \
-  -hostname example.com \
-  -a :29518 \
-  -certmode manual \
-  -certdir /root/derp_certs \
-  -verify-clients
-```
-
-`compose.yaml` 写法：
+创建 `compose.yaml` ：
 
 ```yaml
 services:
@@ -57,6 +39,7 @@ services:
       - "29518:29518"                              # HTTP(S)监听端口
       - "3478:3478/udp"                            # STUN端口
     volumes:
+      - ./derp_certs:/root/derp_certs
       - /var/run/tailscale:/var/run/tailscale:ro   # -verify-clients参数需要
     command:
       - ./derper
@@ -75,7 +58,19 @@ services:
 
 在 `-certmode` 为 `manual`，并且 `-hostname` 为 IP 地址时， derper 会自己生成自签名证书。
 
-在 [Tailscale Access controls](https://login.tailscale.com/admin/acls/file) 添加自定义 DERP 时，加入 `InsecureForTests` ，即可忽略证书校验。
+```bash
+root@flokulto:~# docker logs -f tailscale-derp
+2026/07/04 16:36:15 no config path specified; using /var/lib/derper/derper.key
+2026/07/04 16:36:15 STUN server listening on [::]:3478
+2026/07/04 16:36:15 No mesh key configured
+2026/07/04 16:36:15 derper: serving on :29518 with TLS
+2026/07/04 16:36:15 Using self-signed certificate for IP address "x.x.x.x". Configure it in DERPMap using: (https://tailscale.com/s/custom-derp)
+  {"Name":"custom","RegionID":900,"HostName":"x.x.x.x","CertName":"sha256-raw:c9b489fe37900c1dd5ab0696869cd50e8823617e9d812b0adc2591032267ae50"}
+```
+
+在 [Tailscale Access controls](https://login.tailscale.com/admin/acls/file) 添加自定义 DERP 时，加入 `"InsecureForTests": true` ，即可忽略证书校验。
+
+又或者，可以根据 derper 的提示，把 `CertName` 字段加入配置文件。
 
 ```json
 "derpMap": {
@@ -91,15 +86,17 @@ services:
 						"RegionID":         900,
 						"HostName":         "8.8.8.8",
 						"IPv4":             "8.8.8.8",
-						"InsecureForTests": true,    // 忽略证书校验
 						"DERPPort":         29518,
+                        "CertName":         "sha256-raw:c9b489fe37900c1dd5ab0696869cd50e8823617e9d812b0adc2591032267ae50"
+                        // 忽略证书校验
+                        // "InsecureForTests": true,
                         // 启动 derper 时使用 -stun-port 参数可以自定义STUN端口
                         // "STUNPort":         3478
 					}
 				]
 			}
 		}
-	}
+	},
 ```
 
 ## 构建原理
