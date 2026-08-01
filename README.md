@@ -41,17 +41,14 @@ services:
     volumes:
       - ./derp_certs:/root/derp_certs
       - /var/run/tailscale:/var/run/tailscale:ro   # -verify-clients参数需要
-    command:
-      - ./derper
-      - -hostname
-      - example.com
-      - -a
-      - ":29518"
-      - -certmode
-      - manual
-      - -certdir
-      - /root/derp_certs
-      - -verify-clients                            # 仅允许自己的客户端接入 DERP，需要宿主机已运行 Tailscale
+    command: [
+      "./derper",
+      "-hostname", "example.com",
+      "-a", ":29518",
+      "-certmode", "manual",
+      "-certdir", "/root/derp_certs",
+      "-verify-clients"                            # 仅允许自己的客户端接入 DERP，需要宿主机已运行 Tailscale
+    ]
 ```
 
 使用 `docker compose up -d` 运行。
