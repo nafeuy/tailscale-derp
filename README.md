@@ -1,6 +1,6 @@
 # Tailscale Derper 镜像
 
-每日自动检查 [Tailscale](https://github.com/tailscale/tailscale) 官方最新版本，静态编译 `derper` 并构建多架构 Docker 镜像。
+每四天自动检查 [Tailscale](https://github.com/tailscale/tailscale) 官方最新版本，静态编译 `derper` 并构建多架构 Docker 镜像（具体调度规则见下文）。
 
 ## 版本状态
 
@@ -98,6 +98,7 @@ root@flokulto:~# docker logs -f tailscale-derp
 
 ## 构建原理
 
-- 每天 UTC 凌晨 4 点检查 Tailscale 官方最新 release tag
+- 使用 cron `0 4 */4 * *`，在每月 1、5、9、13、17、21、25、29 日（当月存在该日期时）的 UTC 04:00（北京时间 12:00）检查 Tailscale 官方最新 release tag；每月重新计数，因此跨月间隔可能不足四天
+- 支持通过 GitHub Actions 手动触发，可指定版本或自动检测最新版本
 - 有新版本时，使用 `CGO_ENABLED=0` 静态编译 derper 二进制
 - 打包到 Alpine 基础镜像，不预设 ENTRYPOINT 或 CMD

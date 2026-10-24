@@ -2,8 +2,8 @@ name: Build Tailscale Derper
 
 on:
   schedule:
-    # 每天 UTC 凌晨 4:00
-    - cron: '0 4 * * *'
+    # 每月从 1 日起每隔 4 天，UTC 04:00（跨月间隔可能不足 4 天）
+    - cron: '0 4 */4 * *'
   workflow_dispatch:
     inputs:
       version:
