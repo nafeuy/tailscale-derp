@@ -71,29 +71,29 @@ root@flokulto:~# docker logs -f tailscale-derp
 
 ```json
 "derpMap": {
-		"OmitDefaultRegions": false,
-		"Regions": {
-			"900": {
-				"RegionID":   900,
-				"RegionCode": "北京1",
-				"RegionName": "北京1",
-				"Nodes": [
-					{
-						"Name":             "900",
-						"RegionID":         900,
-						"HostName":         "8.8.8.8",
-						"IPv4":             "8.8.8.8",
-						"DERPPort":         29518,
-                        "CertName":         "sha256-raw:c9b489fe37900c1dd5ab0696869cd50e8823617e9d812b0adc2591032267ae50"
-                        // 忽略证书校验
-                        // "InsecureForTests": true,
-                        // 启动 derper 时使用 -stun-port 参数可以自定义STUN端口
-                        // "STUNPort":         3478
-					}
-				]
-			}
-		}
-	},
+    "OmitDefaultRegions": false,
+    "Regions": {
+        "900": {
+            "RegionID":   900,
+            "RegionCode": "北京1",
+            "RegionName": "北京1",
+            "Nodes": [
+                {
+                    "Name":             "900",
+                    "RegionID":         900,
+                    "HostName":         "8.8.8.8",
+                    "IPv4":             "8.8.8.8",
+                    "DERPPort":         29518,
+                    "CertName":         "sha256-raw:c9b489fe37900c1dd5ab0696869cd50e8823617e9d812b0adc2591032267ae50"
+                    // 忽略证书校验
+                    // "InsecureForTests": true,
+                    // 启动 derper 时使用 -stun-port 参数可以自定义STUN端口
+                    // "STUNPort":         3478
+                }
+            ]
+        }
+    }
+},
 ```
 
 ## 构建原理
